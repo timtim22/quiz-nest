@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Use them as Tailwind classes, e.g. bg-brand-800, text-gold-500.
+ * brand = dark green (primary actions, navigation), gold = warm accent (highlights).
+ */
+@theme {
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+
+  --color-brand-50: #eef7f1;
+  --color-brand-100: #d5ecdd;
+  --color-brand-200: #aed9bf;
+  --color-brand-300: #7bbf98;
+  --color-brand-400: #4a9f71;
+  --color-brand-500: #2e8356;
+  --color-brand-600: #226a45;
+  --color-brand-700: #1c5639;
+  --color-brand-800: #18452f;
+  --color-brand-900: #133827;
+  --color-brand-950: #0a1f15;
+
+  --color-gold-50: #fdf8e9;
+  --color-gold-100: #faedc4;
+  --color-gold-200: #f5d98a;
+  --color-gold-300: #efc24f;
+  --color-gold-400: #e6ab2a;
+  --color-gold-500: #cf9419;
+  --color-gold-600: #b07512;
+  --color-gold-700: #8c5812;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}

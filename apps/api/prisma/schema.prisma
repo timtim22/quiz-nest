@@ -1,0 +1,29 @@
+// Database schema. After changing it, run `npm run db:migrate` to create a migration.
+//
+// Conventions:
+// - Model and field names are camelCase in code; tables and columns are
+//   snake_case in Postgres (@@map / @map), so raw SQL never needs quotes.
+// - IDs are time-ordered UUIDs (v7).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A school, college or academy. Teachers, subjects and exams will belong to one.
+model Organization {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("organizations")
+}

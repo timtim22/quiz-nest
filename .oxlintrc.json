@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "oxc", "import"],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/generated/**", "**/coverage/**"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "typescript/no-explicit-any": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }]
+  },
+  "overrides": [
+    {
+      "files": ["apps/api/prisma/**"],
+      "rules": { "no-console": "off" }
+    }
+  ]
+}

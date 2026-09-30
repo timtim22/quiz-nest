@@ -1,0 +1,37 @@
+{
+  "name": "quiz-nest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Online examination platform that keeps working when the internet doesn't.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "dev": "npm run build:shared && concurrently -k -n shared,api,web -c yellow,blue,green \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:shared": "npm run dev -w @quiz-nest/shared",
+    "dev:api": "npm run dev -w @quiz-nest/api",
+    "dev:web": "npm run dev -w @quiz-nest/web",
+    "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w @quiz-nest/shared",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "test:e2e": "npm run build:shared && npm run test:e2e -w @quiz-nest/api",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:migrate": "npm run db:migrate -w @quiz-nest/api",
+    "db:seed": "npm run db:seed -w @quiz-nest/api",
+    "db:reset": "npm run db:reset -w @quiz-nest/api",
+    "db:studio": "npm run db:studio -w @quiz-nest/api"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.81.0",
+    "prettier": "^3.9.9",
+    "typescript": "~6.0.3"
+  }
+}
