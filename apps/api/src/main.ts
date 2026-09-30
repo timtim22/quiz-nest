@@ -1,20 +1,19 @@
-import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
-import { AppModule } from './app.module.js';
-import { configureApp } from './app.setup.js';
-import type { Env } from './config/env.js';
+import { ValidationPipe } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  const config: ConfigService<Env, true> = app.get(ConfigService);
+  const app = await NestFactory.create(AppModule);
 
-  configureApp(app, { corsOrigin: config.get('CORS_ORIGIN', { infer: true }) });
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
 
-  const port = config.get('PORT', { infer: true });
-  await app.listen(port);
-  Logger.log(`API ready at http://localhost:${port}/api`, 'Bootstrap');
+  // If behind a proxy/load balancer, rate limiting needs the real client IP:
+  // app.set("trust proxy", 1);
+
+  app.enableCors({ origin: "http://localhost:5173" }); // your frontend URL
+
+  await app.listen(3000);
 }
-
-await bootstrap();
+bootstrap();
