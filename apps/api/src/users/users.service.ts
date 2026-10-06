@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
-import { User } from './user.entity';
+
+import { Role } from "./role.enum.js";
+import { User } from "./user.entity.js";
 
 @Injectable()
 export class UsersService {
@@ -11,7 +13,6 @@ export class UsersService {
     return this.repo.findOne({ where: { email } });
   }
 
-  // Includes passwordHash, for login only
   findByEmailWithPassword(email: string) {
     return this.repo
       .createQueryBuilder("user")
@@ -20,7 +21,7 @@ export class UsersService {
       .getOne();
   }
 
-  create(email: string, passwordHash: string) {
-    return this.repo.save(this.repo.create({ email, passwordHash }));
+  create(email: string, passwordHash: string, role: Role = Role.STUDENT) {
+    return this.repo.save(this.repo.create({ email, passwordHash, role }));
   }
 }

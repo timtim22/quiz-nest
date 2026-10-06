@@ -4,16 +4,17 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import * as bcrypt from "bcrypt";
-import { UsersService } from "../users/users.service";
-import { LoginDto } from "./dto/login.dto";
-import { RegisterDto } from "./dto/register.dto";
+import bcrypt from "bcrypt";
+
+import { Role } from "../users/role.enum.js";
+import { UsersService } from "../users/users.service.js";
+import { LoginDto } from "./dto/login.dto.js";
+import { RegisterDto } from "./dto/register.dto.js";
 
 const SALT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
-  // Used to keep response time similar when the email doesn't exist
   private readonly dummyHash = bcrypt.hashSync("dummy-password", SALT_ROUNDS);
 
   constructor(
@@ -28,10 +29,11 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
     try {
-      const user = await this.users.create(dto.email, passwordHash);
-      return { id: user.id, email: user.email };
+      // Public registration always creates a STUDENT.
+      // Never accept the role from the request body.
+      const user = await this.users.create(dto.email, passwordHash, Role.STUDENT);
+      return { id: user.id, email: user.email, role: user.role };
     } catch (err: any) {
-      // Postgres unique violation (race between check and insert)
       if (err?.code === "23505") {
         throw new ConflictException("Email is already registered");
       }
@@ -48,15 +50,15 @@ export class AuthService {
     );
 
     if (!user || !isValid) {
-      // Same message for unknown email and wrong password
       throw new UnauthorizedException("Invalid email or password");
     }
 
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       email: user.email,
+      role: user.role, // <-- role is now in the JWT payload
     });
 
-    return { accessToken };
+    return { accessToken, role: user.role };
   }
 }
