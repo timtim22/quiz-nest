@@ -1,17 +1,22 @@
 import { BookOpen, CalendarClock, PenLine, Plus, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
+import { useAuth } from '@/features/auth/auth-context';
 import { SystemStatusCard } from '@/features/health/SystemStatusCard';
 
 // TODO(QN-20): load real numbers and wire up the quick actions.
 export function DashboardPage() {
+  const { user } = useAuth();
+  const firstName = user?.name.split(' ')[0];
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
           <p className="mt-1 text-sm text-slate-600">
-            An overview of your questions, exams and marking.
+            {firstName ? `Welcome back, ${firstName}. ` : ''}Here’s an overview of your questions,
+            exams and marking.
           </p>
         </div>
         <div className="flex gap-2">

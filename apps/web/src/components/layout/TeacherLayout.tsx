@@ -1,7 +1,8 @@
 import { LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
 import { Logo } from '@/components/ui/Logo';
+import { useAuth } from '@/features/auth/auth-context';
 import { Sidebar } from './Sidebar';
 
 /**
@@ -9,8 +10,17 @@ import { Sidebar } from './Sidebar';
  * Uses start/end (not left/right) spacing so it flips correctly for Urdu (RTL).
  */
 export function TeacherLayout() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const closeMenu = () => setMenuOpen(false);
+
+  async function handleLogout() {
+    setSigningOut(true);
+    await signOut();
+    navigate('/login', { replace: true });
+  }
 
   return (
     <div className="min-h-dvh lg:flex">
@@ -54,17 +64,23 @@ export function TeacherLayout() {
             <Logo />
           </Link>
 
-          {/* TODO(QN-2): show the logged-in teacher and make this log out for real. */}
           <div className="ms-auto flex items-center gap-2">
-            <span className="hidden text-sm text-slate-600 sm:inline">Teacher</span>
-            <Link
-              to="/"
-              className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100"
+            {user && (
+              <div className="hidden text-end leading-tight sm:block">
+                <p className="text-sm font-medium text-slate-900">{user.name}</p>
+                <p className="text-xs text-slate-500">{user.organizationName}</p>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={signingOut}
+              className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-50"
               aria-label="Log out"
               title="Log out"
             >
               <LogOut className="size-5" aria-hidden />
-            </Link>
+            </button>
           </div>
         </header>
 

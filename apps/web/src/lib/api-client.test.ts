@@ -1,6 +1,6 @@
 import { ErrorCode } from '@quiz-nest/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiClient } from './api-client';
+import { ApiError, apiClient, setAccessToken, setAccessTokenRefresher } from './api-client';
 
 function mockFetch(response: Response | Error) {
   const fetchMock = vi.fn(() =>
@@ -20,6 +20,8 @@ function jsonResponse(body: unknown, status = 200) {
 describe('apiClient', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    setAccessToken(null);
+    setAccessTokenRefresher(null);
   });
 
   it('returns `data` from a successful response', async () => {
@@ -73,5 +75,72 @@ describe('apiClient', () => {
       code: ErrorCode.SERVICE_UNAVAILABLE,
       status: 502,
     });
+  });
+});
+
+describe('apiClient login handling', () => {
+  const expired = () =>
+    jsonResponse(
+      { success: false, error: { code: 'UNAUTHORIZED', message: 'Please log in.' } },
+      401,
+    );
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+    setAccessTokenRefresher(null);
+  });
+
+  const authHeader = (call: unknown) =>
+    new Headers((call as [string, RequestInit])[1].headers).get('Authorization');
+
+  it('sends the access token', async () => {
+    const fetchMock = mockFetch(jsonResponse({ success: true, data: null }));
+    setAccessToken('token-1');
+
+    await apiClient.get('/subjects');
+
+    expect(authHeader(fetchMock.mock.calls[0])).toBe('Bearer token-1');
+  });
+
+  it('gets a new token and retries once when the token has expired', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(expired())
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+    vi.stubGlobal('fetch', fetchMock);
+    setAccessToken('old');
+    setAccessTokenRefresher(async () => {
+      setAccessToken('new');
+      return 'new';
+    });
+
+    await expect(apiClient.get('/subjects')).resolves.toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(authHeader(fetchMock.mock.calls[1])).toBe('Bearer new');
+  });
+
+  it('gives up when the user is logged out', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(expired())),
+    );
+    setAccessTokenRefresher(async () => null);
+
+    await expect(apiClient.get('/subjects')).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('never refreshes for calls that opt out, like login', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(expired())),
+    );
+    const refresher = vi.fn(async () => 'new');
+    setAccessTokenRefresher(refresher);
+
+    await expect(
+      apiClient.post('/auth/login', {}, { retryOnUnauthorized: false }),
+    ).rejects.toThrow();
+    expect(refresher).not.toHaveBeenCalled();
   });
 });

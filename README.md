@@ -39,6 +39,8 @@ Online examination platform for schools, colleges and academies. Teachers build 
    npm run db:seed
    ```
 
+   The seed creates a teacher you can log in with locally: `teacher@demo.test` / `Teacher123`.
+
 5. **Run everything**
 
    ```bash
@@ -48,7 +50,9 @@ Online examination platform for schools, colleges and academies. Teachers build 
    - Web app: http://localhost:5173
    - API: http://localhost:3000/api (try http://localhost:3000/api/health)
 
-   The teacher dashboard at http://localhost:5173/teacher/dashboard shows whether the API and database are reachable.
+   Log in at http://localhost:5173/login. The dashboard shows whether the API and database are reachable.
+
+   Email isn't set up yet, so "forgot password" links are printed in the terminal running the API.
 
 ## Scripts
 
@@ -62,7 +66,7 @@ Run these from the repo root.
 | `npm run format`     | Formats all code with Prettier (`format:check` only checks)        |
 | `npm run typecheck`  | Type-checks every package                                          |
 | `npm test`           | Runs unit tests in every package                                   |
-| `npm run test:e2e`   | Runs API end-to-end tests (real HTTP requests, fake database)      |
+| `npm run test:e2e`   | Runs API end-to-end tests against a separate test database         |
 | `npm run db:migrate` | Applies migrations, and creates one if `schema.prisma` has changed |
 | `npm run db:seed`    | Loads starter data (safe to run repeatedly)                        |
 | `npm run db:reset`   | Deletes all data and re-runs every migration                       |
@@ -83,7 +87,7 @@ apps/
       config/env.ts       every environment variable, validated at startup
       common/             error class, error filter, response wrapper, validation pipe
       prisma/             PrismaService (the database client)
-      modules/<feature>/  one folder per feature (health is the example)
+      modules/<feature>/  one folder per feature (auth and health are examples)
     test/                 end-to-end tests
   web/                    React app
     src/
@@ -91,7 +95,7 @@ apps/
       components/ui/      reusable pieces: Button, Card, TextField, StatCard…
       components/layout/  TeacherLayout, StudentLayout, Sidebar
       features/<feature>/ api.ts (requests), hooks, feature-specific components
-      lib/                api-client.ts (the only place that calls fetch), query client
+      lib/                api-client.ts (the only place that calls fetch), useSchemaForm
       pages/              one component per route
 packages/
   shared/                 types, Zod schemas and constants for both apps
@@ -145,11 +149,26 @@ The API is an ES module, so relative imports end in `.js` even though the files 
 
 The Prisma client is generated into `apps/api/src/generated` (gitignored). `npm install` and `db:migrate` regenerate it.
 
+### Logins and protected routes
+
+- **Every API route needs a logged-in teacher** unless it's marked `@Public()`. Read the user with `@CurrentUser()`:
+  ```ts
+  @Get()
+  list(@CurrentUser() user: RequestUser) {
+    return this.subjects.list(user.organizationId);
+  }
+  ```
+  Always filter by `user.organizationId`, so a teacher never sees another school's data.
+- **Tokens:** login returns a 15-minute access token, kept only in memory in the browser, and sets a 30-day refresh token in an httpOnly cookie. `apiClient` adds the access token to every request. When it expires, `apiClient` silently gets a new one and retries.
+- **Web pages:** everything under `/teacher` is wrapped in `RequireAuth` in `router.tsx`. Use `useAuth()` to get the logged-in teacher.
+- **Students don't have accounts.** They'll join exams with an exam code and roll number.
+
 ### Adding a web page
 
 1. Create the page in `src/pages/` and add its route in `src/app/router.tsx`.
 2. Put API calls in `src/features/<feature>/api.ts` using `apiClient`, and wrap them in TanStack Query hooks (see `features/health`). Components never call `fetch` directly.
-3. Keep business logic out of components; put it in the feature folder or in `packages/shared`.
+3. For forms, use `useSchemaForm` with the same Zod schema the API uses (see `pages/auth/LoginPage.tsx`). It shows field errors from both the browser and the API.
+4. Keep business logic out of components; put it in the feature folder or in `packages/shared`.
 
 ### Styling
 
@@ -168,3 +187,5 @@ The Prisma client is generated into `apps/api/src/generated` (gitignored). `npm 
 | API unit tests            | `src/**/*.spec.ts`   | `npm test`         |
 | API end-to-end tests      | `test/*.e2e-spec.ts` | `npm run test:e2e` |
 | Web and shared unit tests | `*.test.ts(x)`       | `npm test`         |
+
+The end-to-end tests use a **separate database and delete everything in it** before each test. They read `TEST_DATABASE_URL` from `apps/api/.env` (default: `postgresql://postgres:postgres@localhost:5432/quiz_nest_test`). Its name must contain "test", so it can never point at your real data. The database is created automatically.
