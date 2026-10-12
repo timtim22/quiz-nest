@@ -24,6 +24,30 @@ export interface RequestOptions extends Omit<RequestInit, 'body' | 'method'> {
   /** Sent as JSON. */
   body?: unknown;
   query?: QueryParams;
+  /**
+   * On a 401, get a new access token and try once more (default true).
+   * Auth calls set this to false: a wrong password must not trigger a refresh.
+   */
+  retryOnUnauthorized?: boolean;
+}
+
+// The access token lives only in memory, never in localStorage, so other scripts
+// on the page can't steal it. After a page reload the auth feature gets a new one
+// using the refresh cookie.
+let accessToken: string | null = null;
+let accessTokenRefresher: (() => Promise<string | null>) | null = null;
+
+/** Set by the auth feature after login, refresh and logout. */
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+/**
+ * Set by the auth feature. Called when a request gets a 401: it should return a new
+ * access token, or null if the user is logged out. The request is then retried once.
+ */
+export function setAccessTokenRefresher(refresher: (() => Promise<string | null>) | null) {
+  accessTokenRefresher = refresher;
 }
 
 /**
@@ -45,11 +69,26 @@ export const apiClient = {
 };
 
 async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+  const { retryOnUnauthorized = true, ...sendOptions } = options;
+
+  try {
+    return await send<T>(method, path, sendOptions);
+  } catch (error) {
+    const expired = error instanceof ApiError && error.status === 401;
+    if (expired && retryOnUnauthorized && accessTokenRefresher && (await accessTokenRefresher())) {
+      return send<T>(method, path, sendOptions);
+    }
+    throw error;
+  }
+}
+
+async function send<T>(method: string, path: string, options: RequestOptions): Promise<T> {
   const { body, query, headers: extraHeaders, ...init } = options;
 
   const headers = new Headers(extraHeaders);
   headers.set('Accept', 'application/json');
   if (body !== undefined) headers.set('Content-Type', 'application/json');
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
   let response: Response;
   try {

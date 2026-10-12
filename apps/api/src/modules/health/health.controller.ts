@@ -2,7 +2,9 @@ import { Controller, Get, HttpStatus, Logger } from '@nestjs/common';
 import { ErrorCode, type HealthStatus } from '@quiz-nest/shared';
 import { AppException } from '../../common/errors/app.exception.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { Public } from '../auth/decorators.js';
 
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);

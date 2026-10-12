@@ -1,4 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
 export const API_PREFIX = 'api';
@@ -16,6 +17,7 @@ interface AppSetupOptions {
 export function configureApp(app: NestExpressApplication, options: AppSetupOptions) {
   app.setGlobalPrefix(API_PREFIX);
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: options.corsOrigin.split(',').map((origin) => origin.trim()),
     credentials: true,
