@@ -1,0 +1,1519 @@
+﻿
+===== ..\..\packages\shared\package.json =====
+
+{
+  "name": "@quiz-nest/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Types, validation schemas and constants shared by the API and the web app.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
+  }
+}
+
+
+===== ..\..\packages\shared\src\index.ts =====
+
+export * from './api/errors.js';
+export * from './api/responses.js';
+export * from './constants/exam.js';
+export * from './constants/question.js';
+export * from './constants/roles.js';
+export * from './schemas/auth.js';
+export * from './schemas/pagination.js';
+
+
+===== ..\..\packages\shared\src\api\errors.ts =====
+
+/**
+ * Every error the API returns has one of these codes, so the web app can react
+ * to a specific situation (e.g. EXAM_EXPIRED) instead of parsing messages.
+ */
+export const ErrorCode = {
+  // General
+  BAD_REQUEST: 'BAD_REQUEST',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  CONFLICT: 'CONFLICT',
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+
+  // Set by the web app when a request never reached the server.
+  CONNECTION_UNAVAILABLE: 'CONNECTION_UNAVAILABLE',
+
+  // Accounts
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  EMAIL_ALREADY_REGISTERED: 'EMAIL_ALREADY_REGISTERED',
+  ACCOUNT_DISABLED: 'ACCOUNT_DISABLED',
+  INVALID_RESET_TOKEN: 'INVALID_RESET_TOKEN',
+
+  // Exams
+  INVALID_EXAM_CODE: 'INVALID_EXAM_CODE',
+  EXAM_NOT_STARTED: 'EXAM_NOT_STARTED',
+  EXAM_EXPIRED: 'EXAM_EXPIRED',
+  EXAM_ALREADY_SUBMITTED: 'EXAM_ALREADY_SUBMITTED',
+  DUPLICATE_ATTEMPT: 'DUPLICATE_ATTEMPT',
+  ANSWER_SYNC_CONFLICT: 'ANSWER_SYNC_CONFLICT',
+
+  // Files
+  UPLOAD_FAILED: 'UPLOAD_FAILED',
+} as const;
+
+export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+
+===== ..\..\packages\shared\src\api\responses.ts =====
+
+import type { ErrorCode } from './errors.js';
+
+/** Shape of every successful API response. */
+export interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiErrorBody {
+  code: ErrorCode;
+  message: string;
+  /** Extra context, e.g. the list of invalid fields for VALIDATION_ERROR. */
+  details?: unknown;
+}
+
+/** Shape of every failed API response. */
+export interface ApiErrorResponse {
+  success: false;
+  error: ApiErrorBody;
+}
+
+export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+/** One entry in `details` for a VALIDATION_ERROR. */
+export interface ValidationIssue {
+  path: string;
+  message: string;
+}
+
+/** GET /api/health */
+export interface HealthStatus {
+  status: 'ok';
+  database: 'up';
+  uptimeSeconds: number;
+  timestamp: string;
+}
+
+
+===== ..\..\packages\shared\src\constants\roles.ts =====
+
+// Constants use `as const` objects instead of TypeScript enums so they work the
+// same in the API, the web app and plain JavaScript.
+
+export const UserRole = {
+  ADMIN: 'ADMIN',
+  TEACHER: 'TEACHER',
+} as const;
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
+
+
+===== ..\..\packages\shared\src\schemas\auth.ts =====
+
+import { z } from 'zod';
+import type { UserRole } from '../constants/roles.js';
+
+/** bcrypt only looks at the first 72 bytes of a password. Urdu letters take 2+ bytes each. */
+export const PASSWORD_MAX_BYTES = 72;
+export const PASSWORD_MIN_LENGTH = 8;
+
+/** Length of a string in UTF-8 bytes, which is what bcrypt counts. */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+  }
+  return bytes;
+}
+
+const email = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Enter a valid email address.').max(254, 'Email is too long.'));
+
+/** Rules for a new password. Login uses a looser check so old passwords still work. */
+const newPassword = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters.`)
+  .refine((value) => utf8ByteLength(value) <= PASSWORD_MAX_BYTES, {
+    message: 'Password is too long.',
+  })
+  .refine((value) => /\p{L}/u.test(value) && /\d/.test(value), {
+    message: 'Use at least one letter and one number.',
+  });
+
+export const registerSchema = z.object({
+  name: z.string().trim().min(2, 'Enter your name.').max(100, 'Name is too long.'),
+  email,
+  password: newPassword,
+  schoolName: z
+    .string()
+    .trim()
+    .min(2, 'Enter your school or academy name.')
+    .max(120, 'School name is too long.'),
+});
+
+export const loginSchema = z.object({
+  email,
+  password: z
+    .string()
+    .min(1, 'Enter your password.')
+    .refine((value) => utf8ByteLength(value) <= PASSWORD_MAX_BYTES, {
+      message: 'Password is too long.',
+    }),
+});
+
+export const forgotPasswordSchema = z.object({ email });
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'This reset link is invalid.').max(200),
+  password: newPassword,
+});
+
+export type RegisterInput = z.infer<typeof registerSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+/** The logged-in user, as the web app sees them. */
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  organizationId: string;
+  organizationName: string;
+}
+
+/** Returned by register, login and refresh. The refresh token travels separately in a cookie. */
+export interface AuthSession {
+  accessToken: string;
+  user: AuthUser;
+}
+
+
+===== ..\..\packages\shared\src\schemas\pagination.ts =====
+
+import { z } from 'zod';
+
+export const MAX_PAGE_SIZE = 100;
+
+/** Query params for any paginated list endpoint, e.g. `?page=2&pageSize=20`. */
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(20),
+});
+
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+
+/** Response body for any paginated list endpoint. */
+export interface Paginated<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+
+===== src\common\errors\app.exception.ts =====
+
+import { HttpException, HttpStatus } from '@nestjs/common';
+import type { ErrorCode } from '@quiz-nest/shared';
+
+/**
+ * Throw this from services and controllers for any expected failure:
+ *
+ *   throw new AppException(ErrorCode.EXAM_EXPIRED, 'This exam has ended.', HttpStatus.GONE);
+ *
+ * The global filter turns it into { success: false, error: { code, message, details } }.
+ */
+export class AppException extends HttpException {
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+    status: HttpStatus = HttpStatus.BAD_REQUEST,
+    readonly details?: unknown,
+  ) {
+    super(message, status);
+  }
+}
+
+
+===== src\prisma\prisma.service.ts =====
+
+import { Injectable, type OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaPg } from '@prisma/adapter-pg';
+import type { Env } from '../config/env.js';
+import { PrismaClient } from '../generated/prisma/client.js';
+
+/**
+ * The database client. Inject it into any service:
+ *
+ *   constructor(private readonly prisma: PrismaService) {}
+ *
+ * Connections open lazily on the first query, so the API can start (and report
+ * the problem on /api/health) even when the database is down.
+ */
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
+  constructor(config: ConfigService<Env, true>) {
+    super({
+      adapter: new PrismaPg({ connectionString: config.get('DATABASE_URL', { infer: true }) }),
+    });
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
+
+
+===== src\modules\auth\auth.controller.ts =====
+
+import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  type AuthSession,
+  type AuthUser,
+  type ForgotPasswordInput,
+  forgotPasswordSchema,
+  type LoginInput,
+  loginSchema,
+  type RegisterInput,
+  registerSchema,
+  type ResetPasswordInput,
+  resetPasswordSchema,
+} from '@quiz-nest/shared';
+import type { CookieOptions, Request, Response } from 'express';
+import { API_PREFIX } from '../../app.setup.js';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+import type { Env } from '../../config/env.js';
+import { REFRESH_COOKIE, REFRESH_TOKEN_TTL_MS } from './auth.constants.js';
+import { AuthService } from './auth.service.js';
+import type { RequestUser } from './auth.types.js';
+import { CurrentUser, Public } from './decorators.js';
+import { PasswordResetService } from './password-reset.service.js';
+
+const MINUTE = 60_000;
+
+/**
+ * Teacher/admin accounts. Login returns a short-lived access token in the body and
+ * sets a long-lived refresh token in an httpOnly cookie that only /api/auth receives.
+ * The cookie is SameSite=Strict, so other websites can't make the browser send it.
+ */
+@Controller('auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  constructor(
+    private readonly auth: AuthService,
+    private readonly passwordReset: PasswordResetService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 10 * MINUTE } })
+  @Post('register')
+  async register(
+    @Body(new ZodValidationPipe(registerSchema)) body: RegisterInput,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSession> {
+    const { session, refreshToken } = await this.auth.register(body);
+    this.setRefreshCookie(res, refreshToken);
+    return session;
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: MINUTE } })
+  @Post('login')
+  @HttpCode(200)
+  async login(
+    @Body(new ZodValidationPipe(loginSchema)) body: LoginInput,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSession> {
+    const { session, refreshToken } = await this.auth.login(body);
+    this.setRefreshCookie(res, refreshToken);
+    return session;
+  }
+
+  /**
+   * The web app calls this on page load and whenever the access token expires.
+   * Returns null when there's no cookie at all: being logged out isn't an error.
+   */
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: MINUTE } })
+  @Post('refresh')
+  @HttpCode(200)
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthSession | null> {
+    const cookie: string | undefined = req.cookies?.[REFRESH_COOKIE];
+    if (!cookie) return null;
+
+    try {
+      const { session, refreshToken } = await this.auth.refresh(cookie);
+      this.setRefreshCookie(res, refreshToken);
+      return session;
+    } catch (error) {
+      this.clearRefreshCookie(res);
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('logout')
+  @HttpCode(200)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<null> {
+    await this.auth.logout(req.cookies?.[REFRESH_COOKIE]);
+    this.clearRefreshCookie(res);
+    return null;
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: MINUTE } })
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput,
+  ): Promise<null> {
+    await this.passwordReset.requestReset(body.email);
+    return null;
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: MINUTE } })
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordInput,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<null> {
+    await this.passwordReset.resetPassword(body.token, body.password);
+    this.clearRefreshCookie(res);
+    return null;
+  }
+
+  @Get('me')
+  me(@CurrentUser() user: RequestUser): Promise<AuthUser> {
+    return this.auth.me(user.id);
+  }
+
+  private cookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: this.config.get('NODE_ENV', { infer: true }) === 'production',
+      sameSite: 'strict',
+      path: `/${API_PREFIX}/auth`,
+    };
+  }
+
+  private setRefreshCookie(res: Response, token: string) {
+    res.cookie(REFRESH_COOKIE, token, { ...this.cookieOptions(), maxAge: REFRESH_TOKEN_TTL_MS });
+  }
+
+  private clearRefreshCookie(res: Response) {
+    res.clearCookie(REFRESH_COOKIE, this.cookieOptions());
+  }
+}
+
+
+===== WEB TREE =====
+
+..\web\src\app\App.tsx
+..\web\src\app\router.tsx
+..\web\src\components\layout\AuthPageLayout.tsx
+..\web\src\components\layout\Sidebar.tsx
+..\web\src\components\layout\StudentLayout.tsx
+..\web\src\components\layout\TeacherLayout.tsx
+..\web\src\components\ui\Alert.tsx
+..\web\src\components\ui\button-styles.ts
+..\web\src\components\ui\Button.tsx
+..\web\src\components\ui\Card.tsx
+..\web\src\components\ui\Logo.tsx
+..\web\src\components\ui\PageLoader.tsx
+..\web\src\components\ui\StatCard.tsx
+..\web\src\components\ui\TextField.tsx
+..\web\src\components\ui\TextLink.tsx
+..\web\src\features\auth\api.ts
+..\web\src\features\auth\auth-context.ts
+..\web\src\features\auth\auth-flow.test.tsx
+..\web\src\features\auth\AuthProvider.tsx
+..\web\src\features\auth\route-guards.tsx
+..\web\src\features\auth\session.test.ts
+..\web\src\features\auth\session.ts
+..\web\src\features\health\api.ts
+..\web\src\features\health\SystemStatusCard.tsx
+..\web\src\features\health\useHealth.ts
+..\web\src\lib\api-client.test.ts
+..\web\src\lib\api-client.ts
+..\web\src\lib\cn.ts
+..\web\src\lib\query-client.ts
+..\web\src\lib\use-schema-form.ts
+..\web\src\pages\auth\ForgotPasswordPage.tsx
+..\web\src\pages\auth\LoginPage.tsx
+..\web\src\pages\auth\RegisterPage.tsx
+..\web\src\pages\auth\ResetPasswordPage.tsx
+..\web\src\pages\student\JoinExamPage.tsx
+..\web\src\pages\teacher\DashboardPage.tsx
+..\web\src\pages\HomePage.test.tsx
+..\web\src\pages\HomePage.tsx
+..\web\src\pages\NotFoundPage.tsx
+..\web\src\pages\RouteErrorPage.tsx
+..\web\src\test\setup.ts
+..\web\src\main.tsx
+..\web\src\vite-env.d.ts
+..\web\package.json
+..\web\tsconfig.app.json
+..\web\tsconfig.json
+..\web\tsconfig.node.json
+..\web\vite.config.ts
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\components\layout\AuthPageLayout.tsx =====
+
+import type { ReactNode } from 'react';
+import { Link } from 'react-router';
+import { Card } from '@/components/ui/Card';
+import { Logo } from '@/components/ui/Logo';
+
+interface AuthPageLayoutProps {
+  title: string;
+  description?: string;
+  /** Shown under the card, e.g. "Already have an account? Log in". */
+  footer?: ReactNode;
+  children: ReactNode;
+}
+
+/** Centered card used by login, sign-up and password reset pages. */
+export function AuthPageLayout({ title, description, footer, children }: AuthPageLayoutProps) {
+  return (
+    <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+      <Link to="/" className="mb-8">
+        <Logo />
+      </Link>
+
+      <Card className="w-full max-w-sm p-6 sm:p-8">
+        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
+        {description && <p className="mt-1 text-sm text-slate-600">{description}</p>}
+        <div className="mt-6">{children}</div>
+      </Card>
+
+      {footer && <p className="mt-6 text-center text-sm text-slate-600">{footer}</p>}
+    </div>
+  );
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\api.ts =====
+
+import type {
+  AuthSession,
+  AuthUser,
+  ForgotPasswordInput,
+  LoginInput,
+  RegisterInput,
+  ResetPasswordInput,
+} from '@quiz-nest/shared';
+import { apiClient } from '@/lib/api-client';
+
+// A 401 from these means "wrong password" or "logged out", not "token expired",
+// so they never trigger the automatic refresh-and-retry.
+const noRetry = { retryOnUnauthorized: false };
+
+export const register = (input: RegisterInput) =>
+  apiClient.post<AuthSession>('/auth/register', input, noRetry);
+
+export const login = (input: LoginInput) =>
+  apiClient.post<AuthSession>('/auth/login', input, noRetry);
+
+/** Uses the httpOnly refresh cookie, which the browser sends automatically. Null = logged out. */
+export const refresh = () =>
+  apiClient.post<AuthSession | null>('/auth/refresh', undefined, noRetry);
+
+export const logout = () => apiClient.post<null>('/auth/logout', undefined, noRetry);
+
+export const forgotPassword = (input: ForgotPasswordInput) =>
+  apiClient.post<null>('/auth/forgot-password', input, noRetry);
+
+export const resetPassword = (input: ResetPasswordInput) =>
+  apiClient.post<null>('/auth/reset-password', input, noRetry);
+
+export const getMe = () => apiClient.get<AuthUser>('/auth/me');
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\auth-context.ts =====
+
+import type { AuthSession, AuthUser } from '@quiz-nest/shared';
+import { createContext, use } from 'react';
+
+export type AuthState =
+  | { status: 'loading'; user?: undefined }
+  | { status: 'authenticated'; user: AuthUser }
+  | { status: 'anonymous'; user?: undefined };
+
+export type AuthContextValue = AuthState & {
+  /** Call with the response of login or register. */
+  signIn: (session: AuthSession) => void;
+  signOut: () => Promise<void>;
+};
+
+export const AuthContext = createContext<AuthContextValue | null>(null);
+
+/** The logged-in teacher and the signIn/signOut actions. */
+export function useAuth(): AuthContextValue {
+  const value = use(AuthContext);
+  if (!value) throw new Error('useAuth must be used inside <AuthProvider>.');
+  return value;
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\auth-flow.test.tsx =====
+
+import type { AuthSession } from '@quiz-nest/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider } from 'react-router';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { routes } from '@/app/router';
+import { setAccessToken } from '@/lib/api-client';
+import { AuthProvider } from './AuthProvider';
+
+const session: AuthSession = {
+  accessToken: 'access-token',
+  user: {
+    id: 'u1',
+    name: 'Ayesha Khan',
+    email: 'ayesha@cityschool.pk',
+    role: 'TEACHER',
+    organizationId: 'o1',
+    organizationName: 'City School',
+  },
+};
+
+const ok = (data: unknown) =>
+  new Response(JSON.stringify({ success: true, data }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+const fail = (status: number, code: string, message: string) =>
+  new Response(JSON.stringify({ success: false, error: { code, message } }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+/** Fake API: answers by URL. Anything not listed gets a 401. */
+function mockApi(handlers: Record<string, () => Response>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      const path = url.replace(/^\/api/, '').split('?')[0];
+      const handler = handlers[path];
+      return Promise.resolve(handler ? handler() : fail(401, 'UNAUTHORIZED', 'Please log in.'));
+    }),
+  );
+}
+
+function renderAt(path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+  return router;
+}
+
+describe('login flow', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+  });
+
+  it('sends logged-out visitors from teacher pages to login', async () => {
+    mockApi({ '/auth/refresh': () => ok(null) });
+    const router = renderAt('/teacher/dashboard');
+
+    expect(await screen.findByRole('heading', { name: 'Teacher login' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?next=%2Fteacher%2Fdashboard');
+  });
+
+  it('keeps a teacher logged in after a page reload', async () => {
+    mockApi({ '/auth/refresh': () => ok(session), '/health': () => ok(null) });
+    renderAt('/teacher/dashboard');
+
+    expect(await screen.findByText(/Welcome back, Ayesha/)).toBeInTheDocument();
+  });
+
+  it('checks the form before calling the API', async () => {
+    mockApi({});
+    renderAt('/login');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(screen.getByText('Enter your password.')).toBeInTheDocument();
+  });
+
+  it('shows the error for a wrong password', async () => {
+    mockApi({
+      '/auth/login': () => fail(401, 'INVALID_CREDENTIALS', 'Wrong email or password.'),
+    });
+    renderAt('/login');
+
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'ayesha@cityschool.pk' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Wrong email or password.');
+  });
+
+  it('logs in and goes to the page the teacher asked for', async () => {
+    mockApi({ '/auth/login': () => ok(session), '/health': () => ok(null) });
+    const router = renderAt('/login?next=%2Fteacher%2Fdashboard');
+
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'ayesha@cityschool.pk' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log in' }));
+
+    expect(await screen.findByText(/Welcome back, Ayesha/)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/teacher/dashboard');
+  });
+});
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\AuthProvider.tsx =====
+
+import type { AuthSession } from '@quiz-nest/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { setAccessToken, setAccessTokenRefresher } from '@/lib/api-client';
+import { logout } from './api';
+import { type AuthContextValue, AuthContext, type AuthState } from './auth-context';
+import { restoreSession } from './session';
+
+/** Knows who is logged in. Wraps the whole app (see App.tsx). */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const [state, setState] = useState<AuthState>({ status: 'loading' });
+
+  useEffect(() => {
+    let active = true;
+    const apply = (session: AuthSession | null) => {
+      if (!active) return;
+      setState(session ? { status: 'authenticated', user: session.user } : { status: 'anonymous' });
+    };
+
+    // Access tokens last 15 minutes. When one expires, the API client calls this and retries.
+    setAccessTokenRefresher(async () => {
+      const session = await restoreSession().catch(() => null);
+      apply(session);
+      return session?.accessToken ?? null;
+    });
+
+    // On page load, the refresh cookie tells us whether the teacher is still logged in.
+    restoreSession().then(apply, () => apply(null));
+
+    return () => {
+      active = false;
+      setAccessTokenRefresher(null);
+    };
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      ...state,
+      signIn(session) {
+        setAccessToken(session.accessToken);
+        setState({ status: 'authenticated', user: session.user });
+      },
+      async signOut() {
+        try {
+          await logout();
+        } finally {
+          setAccessToken(null);
+          queryClient.clear();
+          setState({ status: 'anonymous' });
+        }
+      },
+    }),
+    [state, queryClient],
+  );
+
+  return <AuthContext value={value}>{children}</AuthContext>;
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\route-guards.tsx =====
+
+import type { ReactNode } from 'react';
+import { Navigate, useLocation, useSearchParams } from 'react-router';
+import { PageLoader } from '@/components/ui/PageLoader';
+import { useAuth } from './auth-context';
+import { safeNextPath } from './session';
+
+/** Wrap pages that need a logged-in teacher. Others are sent to /login and come back after. */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const location = useLocation();
+
+  if (auth.status === 'loading') return <PageLoader />;
+  if (auth.status === 'anonymous') {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+  return children;
+}
+
+/** Wrap login/register pages: a logged-in teacher goes straight to where they were heading. */
+export function GuestOnly({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const [searchParams] = useSearchParams();
+
+  if (auth.status === 'loading') return <PageLoader />;
+  if (auth.status === 'authenticated') {
+    return <Navigate to={safeNextPath(searchParams.get('next'))} replace />;
+  }
+  return children;
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\session.test.ts =====
+
+import { describe, expect, it } from 'vitest';
+import { safeNextPath } from './session';
+
+describe('safeNextPath', () => {
+  it('keeps paths inside the app', () => {
+    expect(safeNextPath('/teacher/exams?tab=active')).toBe('/teacher/exams?tab=active');
+  });
+
+  it('falls back to the dashboard for missing or outside links', () => {
+    expect(safeNextPath(null)).toBe('/teacher/dashboard');
+    expect(safeNextPath('https://evil.example')).toBe('/teacher/dashboard');
+    expect(safeNextPath('//evil.example')).toBe('/teacher/dashboard');
+    expect(safeNextPath('/\\evil.example')).toBe('/teacher/dashboard');
+  });
+});
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\auth\session.ts =====
+
+import type { AuthSession } from '@quiz-nest/shared';
+import { ApiError, setAccessToken } from '@/lib/api-client';
+import { refresh } from './api';
+
+let inFlight: Promise<AuthSession | null> | null = null;
+
+/**
+ * Gets a fresh access token using the refresh cookie. Returns null when the user
+ * isn't logged in. Calls made while one is already running share it, so the cookie
+ * is only swapped once (React StrictMode and parallel requests both do this).
+ */
+export function restoreSession(): Promise<AuthSession | null> {
+  inFlight ??= refresh()
+    .then((session) => {
+      setAccessToken(session?.accessToken ?? null);
+      return session;
+    })
+    .catch((error: unknown) => {
+      setAccessToken(null);
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return null;
+      throw error;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+
+  return inFlight;
+}
+
+/** Only allow redirects within this app, e.g. `/teacher/exams`, never `//evil.com`. */
+export function safeNextPath(next: string | null, fallback = '/teacher/dashboard'): string {
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
+    return fallback;
+  }
+  return next;
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\features\health\api.ts =====
+
+import type { HealthStatus } from '@quiz-nest/shared';
+import { apiClient } from '@/lib/api-client';
+
+export const getHealth = () => apiClient.get<HealthStatus>('/health');
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\lib\api-client.test.ts =====
+
+import { ErrorCode } from '@quiz-nest/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, apiClient, setAccessToken, setAccessTokenRefresher } from './api-client';
+
+function mockFetch(response: Response | Error) {
+  const fetchMock = vi.fn(() =>
+    response instanceof Error ? Promise.reject(response) : Promise.resolve(response),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+describe('apiClient', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+    setAccessTokenRefresher(null);
+  });
+
+  it('returns `data` from a successful response', async () => {
+    mockFetch(jsonResponse({ success: true, data: { id: 1 } }));
+
+    await expect(apiClient.get('/things/1')).resolves.toEqual({ id: 1 });
+  });
+
+  it('sends JSON bodies and query params', async () => {
+    const fetchMock = mockFetch(jsonResponse({ success: true, data: null }));
+
+    await apiClient.post('/things', { name: 'x' }, { query: { page: 2, skip: undefined } });
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/things?page=2');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe('{"name":"x"}');
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('throws ApiError with the code from the server', async () => {
+    mockFetch(
+      jsonResponse(
+        { success: false, error: { code: 'EXAM_EXPIRED', message: 'This exam has ended.' } },
+        410,
+      ),
+    );
+
+    const error = await apiClient.get('/exams/1').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      code: ErrorCode.EXAM_EXPIRED,
+      message: 'This exam has ended.',
+      status: 410,
+    });
+  });
+
+  it('throws CONNECTION_UNAVAILABLE when the network is down', async () => {
+    mockFetch(new TypeError('Failed to fetch'));
+
+    await expect(apiClient.get('/health')).rejects.toMatchObject({
+      code: ErrorCode.CONNECTION_UNAVAILABLE,
+      status: 0,
+    });
+  });
+
+  it('handles responses that are not JSON', async () => {
+    mockFetch(new Response('<html>Bad gateway</html>', { status: 502 }));
+
+    await expect(apiClient.get('/health')).rejects.toMatchObject({
+      code: ErrorCode.SERVICE_UNAVAILABLE,
+      status: 502,
+    });
+  });
+});
+
+describe('apiClient login handling', () => {
+  const expired = () =>
+    jsonResponse(
+      { success: false, error: { code: 'UNAUTHORIZED', message: 'Please log in.' } },
+      401,
+    );
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setAccessToken(null);
+    setAccessTokenRefresher(null);
+  });
+
+  const authHeader = (call: unknown) =>
+    new Headers((call as [string, RequestInit])[1].headers).get('Authorization');
+
+  it('sends the access token', async () => {
+    const fetchMock = mockFetch(jsonResponse({ success: true, data: null }));
+    setAccessToken('token-1');
+
+    await apiClient.get('/subjects');
+
+    expect(authHeader(fetchMock.mock.calls[0])).toBe('Bearer token-1');
+  });
+
+  it('gets a new token and retries once when the token has expired', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(expired())
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: 'ok' }));
+    vi.stubGlobal('fetch', fetchMock);
+    setAccessToken('old');
+    setAccessTokenRefresher(async () => {
+      setAccessToken('new');
+      return 'new';
+    });
+
+    await expect(apiClient.get('/subjects')).resolves.toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(authHeader(fetchMock.mock.calls[1])).toBe('Bearer new');
+  });
+
+  it('gives up when the user is logged out', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(expired())),
+    );
+    setAccessTokenRefresher(async () => null);
+
+    await expect(apiClient.get('/subjects')).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('never refreshes for calls that opt out, like login', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(expired())),
+    );
+    const refresher = vi.fn(async () => 'new');
+    setAccessTokenRefresher(refresher);
+
+    await expect(
+      apiClient.post('/auth/login', {}, { retryOnUnauthorized: false }),
+    ).rejects.toThrow();
+    expect(refresher).not.toHaveBeenCalled();
+  });
+});
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\lib\api-client.ts =====
+
+import { type ApiResponse, ErrorCode } from '@quiz-nest/shared';
+
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
+
+/** Thrown for every failed request. Check `code` (an ErrorCode) to decide what to show. */
+export class ApiError extends Error {
+  readonly code: ErrorCode;
+  /** HTTP status, or 0 when the request never reached the server. */
+  readonly status: number;
+  readonly details?: unknown;
+
+  constructor(code: ErrorCode, message: string, status: number, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+type QueryParams = Record<string, string | number | boolean | undefined | null>;
+
+export interface RequestOptions extends Omit<RequestInit, 'body' | 'method'> {
+  /** Sent as JSON. */
+  body?: unknown;
+  query?: QueryParams;
+  /**
+   * On a 401, get a new access token and try once more (default true).
+   * Auth calls set this to false: a wrong password must not trigger a refresh.
+   */
+  retryOnUnauthorized?: boolean;
+}
+
+// The access token lives only in memory, never in localStorage, so other scripts
+// on the page can't steal it. After a page reload the auth feature gets a new one
+// using the refresh cookie.
+let accessToken: string | null = null;
+let accessTokenRefresher: (() => Promise<string | null>) | null = null;
+
+/** Set by the auth feature after login, refresh and logout. */
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+/**
+ * Set by the auth feature. Called when a request gets a 401: it should return a new
+ * access token, or null if the user is logged out. The request is then retried once.
+ */
+export function setAccessTokenRefresher(refresher: (() => Promise<string | null>) | null) {
+  accessTokenRefresher = refresher;
+}
+
+/**
+ * The only place the web app talks to the API. Use it from feature `api.ts` files:
+ *
+ *   export const getSubjects = () => apiClient.get<Subject[]>('/subjects');
+ *
+ * It returns the `data` of { success: true, data } and throws ApiError otherwise.
+ */
+export const apiClient = {
+  get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>('POST', path, { ...options, body }),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>('PUT', path, { ...options, body }),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>('PATCH', path, { ...options, body }),
+  delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, options),
+};
+
+async function request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
+  const { retryOnUnauthorized = true, ...sendOptions } = options;
+
+  try {
+    return await send<T>(method, path, sendOptions);
+  } catch (error) {
+    const expired = error instanceof ApiError && error.status === 401;
+    if (expired && retryOnUnauthorized && accessTokenRefresher && (await accessTokenRefresher())) {
+      return send<T>(method, path, sendOptions);
+    }
+    throw error;
+  }
+}
+
+async function send<T>(method: string, path: string, options: RequestOptions): Promise<T> {
+  const { body, query, headers: extraHeaders, ...init } = options;
+
+  const headers = new Headers(extraHeaders);
+  headers.set('Accept', 'application/json');
+  if (body !== undefined) headers.set('Content-Type', 'application/json');
+  if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      ...init,
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'include',
+    });
+  } catch (error) {
+    throw new ApiError(
+      ErrorCode.CONNECTION_UNAVAILABLE,
+      'Could not reach the server. Check your internet connection.',
+      0,
+      error,
+    );
+  }
+
+  const payload = await readJson<ApiResponse<T>>(response);
+
+  if (payload?.success === true && response.ok) return payload.data;
+  if (payload?.success === false) {
+    const { code, message, details } = payload.error;
+    throw new ApiError(code, message, response.status, details);
+  }
+  throw new ApiError(
+    response.status >= 500 ? ErrorCode.SERVICE_UNAVAILABLE : ErrorCode.BAD_REQUEST,
+    `Unexpected response from the server (${response.status}).`,
+    response.status,
+  );
+}
+
+function buildUrl(path: string, query?: QueryParams): string {
+  const url = `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  if (!query) return url;
+
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null) params.set(key, String(value));
+  }
+  const search = params.toString();
+  return search ? `${url}?${search}` : url;
+}
+
+async function readJson<T>(response: Response): Promise<T | undefined> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\pages\auth\ForgotPasswordPage.tsx =====
+
+import { forgotPasswordSchema } from '@quiz-nest/shared';
+import { AuthPageLayout } from '@/components/layout/AuthPageLayout';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
+import { TextLink } from '@/components/ui/TextLink';
+import { forgotPassword } from '@/features/auth/api';
+import { useSchemaForm } from '@/lib/use-schema-form';
+
+export function ForgotPasswordPage() {
+  const form = useSchemaForm(forgotPasswordSchema, forgotPassword);
+
+  return (
+    <AuthPageLayout
+      title="Reset your password"
+      description="Enter your email and weâ€™ll send you a link to choose a new password."
+      footer={<TextLink to="/login">Back to login</TextLink>}
+    >
+      {form.isSuccess ? (
+        <div className="space-y-3">
+          {/* Same message whether or not the account exists, like the API. */}
+          <Alert variant="success">
+            If an account exists for that email, a reset link is on its way. The link works for one
+            hour.
+          </Alert>
+          {import.meta.env.DEV && (
+            <Alert>
+              Email isnâ€™t set up yet. The link is printed in the terminal running the API.
+            </Alert>
+          )}
+        </div>
+      ) : (
+        <>
+          {form.formError && (
+            <Alert variant="error" className="mb-4">
+              {form.formError}
+            </Alert>
+          )}
+          <form className="space-y-4" onSubmit={form.handleSubmit} noValidate>
+            <TextField
+              label="Email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              error={form.fieldErrors.email}
+              required
+            />
+            <Button type="submit" className="w-full" disabled={form.isSubmitting}>
+              {form.isSubmitting ? 'Sendingâ€¦' : 'Send reset link'}
+            </Button>
+          </form>
+        </>
+      )}
+    </AuthPageLayout>
+  );
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\pages\auth\LoginPage.tsx =====
+
+import { loginSchema } from '@quiz-nest/shared';
+import { useSearchParams } from 'react-router';
+import { AuthPageLayout } from '@/components/layout/AuthPageLayout';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
+import { TextLink } from '@/components/ui/TextLink';
+import { login } from '@/features/auth/api';
+import { useAuth } from '@/features/auth/auth-context';
+import { useSchemaForm } from '@/lib/use-schema-form';
+
+// After login, GuestOnly (see router.tsx) sends the teacher on to ?next= or the dashboard.
+export function LoginPage() {
+  const { signIn } = useAuth();
+  const [searchParams] = useSearchParams();
+  const form = useSchemaForm(loginSchema, login, { onSuccess: signIn });
+
+  return (
+    <AuthPageLayout
+      title="Teacher login"
+      description="Log in to manage your questions and exams."
+      footer={
+        <>
+          New to Quiz Nest? <TextLink to="/register">Create an account</TextLink>
+        </>
+      }
+    >
+      {searchParams.get('reset') === '1' && (
+        <Alert variant="success" className="mb-4">
+          Your password has been changed. Log in with your new password.
+        </Alert>
+      )}
+      {form.formError && (
+        <Alert variant="error" className="mb-4">
+          {form.formError}
+        </Alert>
+      )}
+
+      <form className="space-y-4" onSubmit={form.handleSubmit} noValidate>
+        <TextField
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          error={form.fieldErrors.email}
+          required
+        />
+        <div>
+          <TextField
+            label="Password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            error={form.fieldErrors.password}
+            required
+          />
+          <p className="mt-2 text-end text-sm">
+            <TextLink to="/forgot-password">Forgot password?</TextLink>
+          </p>
+        </div>
+        <Button type="submit" className="w-full" disabled={form.isSubmitting}>
+          {form.isSubmitting ? 'Logging inâ€¦' : 'Log in'}
+        </Button>
+      </form>
+    </AuthPageLayout>
+  );
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\pages\auth\RegisterPage.tsx =====
+
+import { PASSWORD_MIN_LENGTH, registerSchema } from '@quiz-nest/shared';
+import { AuthPageLayout } from '@/components/layout/AuthPageLayout';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
+import { TextLink } from '@/components/ui/TextLink';
+import { register } from '@/features/auth/api';
+import { useAuth } from '@/features/auth/auth-context';
+import { useSchemaForm } from '@/lib/use-schema-form';
+
+export function RegisterPage() {
+  const { signIn } = useAuth();
+  const form = useSchemaForm(registerSchema, register, { onSuccess: signIn });
+
+  return (
+    <AuthPageLayout
+      title="Create a teacher account"
+      description="Set up your question bank and exams in a few minutes."
+      footer={
+        <>
+          Already have an account? <TextLink to="/login">Log in</TextLink>
+        </>
+      }
+    >
+      {form.formError && (
+        <Alert variant="error" className="mb-4">
+          {form.formError}
+        </Alert>
+      )}
+
+      <form className="space-y-4" onSubmit={form.handleSubmit} noValidate>
+        <TextField
+          label="Your name"
+          name="name"
+          autoComplete="name"
+          error={form.fieldErrors.name}
+          required
+        />
+        <TextField
+          label="School or academy"
+          name="schoolName"
+          autoComplete="organization"
+          error={form.fieldErrors.schoolName}
+          required
+        />
+        <TextField
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          error={form.fieldErrors.email}
+          required
+        />
+        <TextField
+          label="Password"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          hint={`At least ${PASSWORD_MIN_LENGTH} characters, with a letter and a number.`}
+          error={form.fieldErrors.password}
+          required
+        />
+        <Button type="submit" className="w-full" disabled={form.isSubmitting}>
+          {form.isSubmitting ? 'Creating accountâ€¦' : 'Create account'}
+        </Button>
+      </form>
+    </AuthPageLayout>
+  );
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\src\pages\auth\ResetPasswordPage.tsx =====
+
+import { PASSWORD_MIN_LENGTH, resetPasswordSchema } from '@quiz-nest/shared';
+import { useNavigate, useSearchParams } from 'react-router';
+import { z } from 'zod';
+import { AuthPageLayout } from '@/components/layout/AuthPageLayout';
+import { Alert } from '@/components/ui/Alert';
+import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
+import { TextLink } from '@/components/ui/TextLink';
+import { resetPassword } from '@/features/auth/api';
+import { useAuth } from '@/features/auth/auth-context';
+import { useSchemaForm } from '@/lib/use-schema-form';
+
+// The "type it twice" check only matters in the browser, so it lives here, not in shared.
+const resetFormSchema = resetPasswordSchema
+  .extend({ confirmPassword: z.string() })
+  .refine((values) => values.password === values.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'The two passwords donâ€™t match.',
+  });
+
+export function ResetPasswordPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+  const token = searchParams.get('token');
+
+  const form = useSchemaForm(
+    resetFormSchema,
+    ({ token, password }) => resetPassword({ token, password }),
+    {
+      // The API logs the user out everywhere, so make sure this browser agrees.
+      onSuccess: async () => {
+        await signOut();
+        navigate('/login?reset=1', { replace: true });
+      },
+    },
+  );
+
+  if (!token) {
+    return (
+      <AuthPageLayout title="Reset your password">
+        <Alert variant="error">
+          This reset link is incomplete. Please{' '}
+          <TextLink to="/forgot-password">request a new one</TextLink>.
+        </Alert>
+      </AuthPageLayout>
+    );
+  }
+
+  return (
+    <AuthPageLayout
+      title="Choose a new password"
+      footer={<TextLink to="/login">Back to login</TextLink>}
+    >
+      {form.formError && (
+        <Alert variant="error" className="mb-4">
+          {form.formError} <TextLink to="/forgot-password">Request a new link</TextLink>
+        </Alert>
+      )}
+
+      <form className="space-y-4" onSubmit={form.handleSubmit} noValidate>
+        <input type="hidden" name="token" value={token} />
+        <TextField
+          label="New password"
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          hint={`At least ${PASSWORD_MIN_LENGTH} characters, with a letter and a number.`}
+          error={form.fieldErrors.password}
+          required
+        />
+        <TextField
+          label="Type it again"
+          name="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          error={form.fieldErrors.confirmPassword}
+          required
+        />
+        <Button type="submit" className="w-full" disabled={form.isSubmitting}>
+          {form.isSubmitting ? 'Savingâ€¦' : 'Save new password'}
+        </Button>
+      </form>
+    </AuthPageLayout>
+  );
+}
+
+
+===== D:\quiznest\quiz-nest\apps\web\package.json =====
+
+{
+  "name": "@quiz-nest/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quiz Nest web app for teachers, admins and students (React).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@quiz-nest/shared": "*",
+    "@tanstack/react-query": "^5.104.0",
+    "lucide-react": "^1.49.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.1",
+    "vitest": "^4.1.11"
+  }
+}
+

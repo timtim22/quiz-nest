@@ -8,7 +8,7 @@ import { validateEnv } from './config/env.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
-
+import { CurriculumModule } from './curriculum/curriculum.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),
@@ -21,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     // Feature modules go here, one per folder in src/modules.
     AuthModule,
     HealthModule,
+    CurriculumModule,
   ],
   providers: [
     // Every error becomes { success: false, error: { code, message } }.

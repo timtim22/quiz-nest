@@ -5,3 +5,4 @@ export * from './constants/question.js';
 export * from './constants/roles.js';
 export * from './schemas/auth.js';
 export * from './schemas/pagination.js';
+export * from './curriculum';
