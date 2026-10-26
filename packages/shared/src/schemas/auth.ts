@@ -80,3 +80,11 @@ export interface AuthSession {
   accessToken: string;
   user: AuthUser;
 }
+
+/** Returned by register instead of a session when new teachers need an admin's approval. */
+export interface PendingApproval {
+  pendingApproval: true;
+  email: string;
+}
+
+export type RegisterResult = AuthSession | PendingApproval;

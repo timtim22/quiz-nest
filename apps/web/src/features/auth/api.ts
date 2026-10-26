@@ -4,6 +4,7 @@ import type {
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
+  RegisterResult,
   ResetPasswordInput,
 } from '@quiz-nest/shared';
 import { apiClient } from '@/lib/api-client';
@@ -12,8 +13,9 @@ import { apiClient } from '@/lib/api-client';
 // so they never trigger the automatic refresh-and-retry.
 const noRetry = { retryOnUnauthorized: false };
 
+/** A session, or `{ pendingApproval: true }` when an admin must approve new teachers first. */
 export const register = (input: RegisterInput) =>
-  apiClient.post<AuthSession>('/auth/register', input, noRetry);
+  apiClient.post<RegisterResult>('/auth/register', input, noRetry);
 
 export const login = (input: LoginInput) =>
   apiClient.post<AuthSession>('/auth/login', input, noRetry);

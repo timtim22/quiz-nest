@@ -34,7 +34,7 @@ export async function createTestApp({ rateLimits = false }: TestAppOptions = {})
 /** Deletes every row. Add new tables here as the schema grows. */
 export async function resetDatabase(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE topics, chapters, subjects, password_reset_tokens, sessions, users, organizations RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE audit_logs, system_settings, topics, chapters, subjects, password_reset_tokens, sessions, users, organizations RESTART IDENTITY CASCADE',
   );
 }
 
@@ -72,4 +72,16 @@ export async function registerTeacher(
   }
   const { accessToken, user } = response.body.data as AuthSession;
   return { accessToken, user, email: body.email, password: body.password };
+}
+
+/** Signs up a teacher, makes them an admin, and logs in again so the token carries the new role. */
+export async function registerAdmin(app: NestExpressApplication, prisma: PrismaService) {
+  const { email, password, user } = await registerTeacher(app, { name: 'Admin User' });
+  await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } });
+  const response = await request(app.getHttpServer())
+    .post('/api/auth/login')
+    .send({ email, password })
+    .expect(200);
+  const session = response.body.data as AuthSession;
+  return { accessToken: session.accessToken, user: session.user, email, password };
 }

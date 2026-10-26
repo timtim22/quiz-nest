@@ -39,7 +39,7 @@ Online examination platform for schools, colleges and academies. Teachers build 
    npm run db:seed
    ```
 
-   The seed creates a teacher you can log in with locally: `teacher@demo.test` / `Teacher123`.
+   The seed creates two local logins: a teacher (`teacher@demo.test` / `Teacher123`) and an admin (`admin@demo.test` / `Admin1234`).
 
 5. **Run everything**
 
@@ -53,6 +53,9 @@ Online examination platform for schools, colleges and academies. Teachers build 
    Log in at http://localhost:5173/login. The dashboard shows whether the API and database are reachable.
 
    Email isn't set up yet, so "forgot password" links are printed in the terminal running the API.
+
+   **Port 3000 already in use?** Run the API on another port and point the web app at it:
+   `PORT=3001 API_PROXY_TARGET=http://localhost:3001 npm run dev`
 
 ## Scripts
 
@@ -160,8 +163,26 @@ The Prisma client is generated into `apps/api/src/generated` (gitignored). `npm 
   ```
   Always filter by `user.organizationId`, so a teacher never sees another school's data.
 - **Tokens:** login returns a 15-minute access token, kept only in memory in the browser, and sets a 30-day refresh token in an httpOnly cookie. `apiClient` adds the access token to every request. When it expires, `apiClient` silently gets a new one and retries.
-- **Web pages:** everything under `/teacher` is wrapped in `RequireAuth` in `router.tsx`. Use `useAuth()` to get the logged-in teacher.
+- **Roles:** users are `TEACHER` or `ADMIN`. Limit a route or a whole controller with `@Roles(UserRole.ADMIN)`; other roles get 403. Everything under `/api/admin` is admin-only.
+- **Web pages:** everything under `/teacher` and `/admin` is wrapped in `RequireAuth` in `router.tsx`; admin pages are also wrapped in `RequireRole`. Use `useAuth()` to get the logged-in user.
+- **Making an admin:** sign up normally, then run `npm run user:make-admin -w @quiz-nest/api -- someone@school.pk`.
+- **Approving teachers:** an admin can turn on "New teachers need approval" (Administration → Overview). New sign-ups then wait on the Users page until approved.
 - **Students don't have accounts.** They'll join exams with an exam code and roll number.
+
+### Recording important actions (audit log)
+
+Inject `AuditService` in any service and record who did what. Admins see it under Administration → Audit log.
+
+```ts
+await this.audit.record({
+  actorId: user.id,
+  action: AuditAction.EXAM_PUBLISHED, // add new actions to packages/shared/src/constants/audit.ts
+  entityType: 'Exam',
+  entityId: exam.id,
+});
+```
+
+`record()` never throws, so a logging problem can't break the action itself.
 
 ### Adding a web page
 

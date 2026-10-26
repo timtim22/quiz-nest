@@ -1,9 +1,10 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ErrorCode } from '@quiz-nest/shared';
+import { AuditAction, ErrorCode } from '@quiz-nest/shared';
 import { AppException } from '../../common/errors/app.exception.js';
 import type { Env } from '../../config/env.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { PASSWORD_RESET_TTL_MS } from './auth.constants.js';
 import { createRandomToken, hashPassword, hashToken } from './crypto.js';
@@ -14,6 +15,7 @@ export class PasswordResetService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService<Env, true>,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -66,6 +68,13 @@ export class PasswordResetService {
 
       await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
       await tx.session.deleteMany({ where: { userId: record.userId } });
+    });
+
+    await this.audit.record({
+      actorId: record.userId,
+      action: AuditAction.PASSWORD_RESET,
+      entityType: 'User',
+      entityId: record.userId,
     });
   }
 }

@@ -1,5 +1,8 @@
+import type { UserRole } from '@quiz-nest/shared';
+import { ShieldAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router';
+import { ButtonLink } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/PageLoader';
 import { useAuth } from './auth-context';
 import { safeNextPath } from './session';
@@ -27,4 +30,26 @@ export function GuestOnly({ children }: { children: ReactNode }) {
     return <Navigate to={safeNextPath(searchParams.get('next'))} replace />;
   }
   return children;
+}
+
+/**
+ * Use inside RequireAuth for pages only some roles may see. The API checks roles
+ * too; this just shows a friendly page instead of errors.
+ */
+export function RequireRole({ role, children }: { role: UserRole; children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role === role) return children;
+
+  return (
+    <div className="flex flex-col items-center py-16 text-center">
+      <ShieldAlert className="size-10 text-gold-500" aria-hidden />
+      <h1 className="mt-4 text-xl font-semibold text-slate-900">
+        You don’t have access to this page
+      </h1>
+      <p className="mt-2 text-sm text-slate-600">It’s only available to administrators.</p>
+      <ButtonLink to="/teacher/dashboard" variant="secondary" className="mt-6">
+        Back to dashboard
+      </ButtonLink>
+    </div>
+  );
 }

@@ -1,7 +1,11 @@
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
+import { UserRole } from '@quiz-nest/shared';
+import { createBrowserRouter, Navigate, Outlet, type RouteObject } from 'react-router';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { StudentLayout } from '@/components/layout/StudentLayout';
-import { TeacherLayout } from '@/components/layout/TeacherLayout';
-import { GuestOnly, RequireAuth } from '@/features/auth/route-guards';
+import { GuestOnly, RequireAuth, RequireRole } from '@/features/auth/route-guards';
+import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
+import { AdminUsersPage } from '@/pages/admin/AdminUsersPage';
+import { AuditLogPage } from '@/pages/admin/AuditLogPage';
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
@@ -50,7 +54,7 @@ export const routes: RouteObject[] = [
         // Everything under /teacher needs a logged-in teacher.
         element: (
           <RequireAuth>
-            <TeacherLayout />
+            <AppLayout />
           </RequireAuth>
         ),
         children: [
@@ -58,6 +62,30 @@ export const routes: RouteObject[] = [
           { path: 'dashboard', element: <DashboardPage /> },
           { path: 'subjects', element: <SubjectsPage /> },
           { path: 'subjects/:subjectId', element: <SubjectDetailPage /> },
+        ],
+      },
+      {
+        path: '/admin',
+        element: (
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        ),
+        children: [
+          {
+            // Admins only. Teachers see a "no access" page (and the API refuses them too).
+            element: (
+              <RequireRole role={UserRole.ADMIN}>
+                <Outlet />
+              </RequireRole>
+            ),
+            children: [
+              { index: true, element: <Navigate to="dashboard" replace /> },
+              { path: 'dashboard', element: <AdminDashboardPage /> },
+              { path: 'users', element: <AdminUsersPage /> },
+              { path: 'audit-log', element: <AuditLogPage /> },
+            ],
+          },
         ],
       },
       {
