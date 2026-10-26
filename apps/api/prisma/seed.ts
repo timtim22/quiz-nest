@@ -5,11 +5,16 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/modules/auth/crypto.js';
 
-/** Local development login. Never created in production. */
+/** Local development logins. Never created in production. */
 const DEMO_TEACHER = {
   name: 'Demo Teacher',
   email: 'teacher@demo.test',
   password: 'Teacher123',
+};
+const DEMO_ADMIN = {
+  name: 'Demo Admin',
+  email: 'admin@demo.test',
+  password: 'Admin1234',
 };
 
 const prisma = new PrismaClient({
@@ -40,6 +45,19 @@ async function main() {
     },
   });
   console.log(`Seeded teacher: ${DEMO_TEACHER.email} / ${DEMO_TEACHER.password}`);
+
+  await prisma.user.upsert({
+    where: { email: DEMO_ADMIN.email },
+    update: {},
+    create: {
+      name: DEMO_ADMIN.name,
+      email: DEMO_ADMIN.email,
+      passwordHash: await hashPassword(DEMO_ADMIN.password),
+      role: 'ADMIN',
+      organizationId: organization.id,
+    },
+  });
+  console.log(`Seeded admin: ${DEMO_ADMIN.email} / ${DEMO_ADMIN.password}`);
 }
 
 main()

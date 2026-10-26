@@ -11,8 +11,9 @@ export default defineConfig({
   server: {
     port: 5173,
     // In development the browser calls /api on the Vite server, which forwards to the API.
-    // Same origin, so no CORS setup is needed locally.
-    proxy: { '/api': 'http://localhost:3000' },
+    // Same origin, so no CORS setup is needed locally. If port 3000 is taken, run the API on
+    // another port: PORT=3001 API_PROXY_TARGET=http://localhost:3001 npm run dev
+    proxy: { '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:3000' },
   },
   test: {
     environment: 'jsdom',

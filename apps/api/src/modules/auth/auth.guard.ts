@@ -1,16 +1,16 @@
 import { type CanActivate, type ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { ErrorCode } from '@quiz-nest/shared';
+import { ErrorCode, type UserRole } from '@quiz-nest/shared';
 import type { Request } from 'express';
 import { AppException } from '../../common/errors/app.exception.js';
 import type { AccessTokenPayload, AuthenticatedRequest } from './auth.types.js';
-import { IS_PUBLIC_KEY } from './decorators.js';
+import { IS_PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 
 /**
  * Runs before every route (registered globally in AuthModule). It checks the
- * `Authorization: Bearer <token>` header and puts the user on `request.user`.
- * Routes marked @Public() skip it.
+ * `Authorization: Bearer <token>` header, puts the user on `request.user`, and
+ * enforces @Roles(). Routes marked @Public() skip it.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -30,13 +30,26 @@ export class AuthGuard implements CanActivate {
     const token = bearerToken(request);
     if (!token) throw notLoggedIn();
 
+    let payload: AccessTokenPayload;
     try {
-      const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
-      request.user = { id: payload.sub, role: payload.role, organizationId: payload.org };
-      return true;
+      payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
     } catch {
       throw notLoggedIn();
     }
+    request.user = { id: payload.sub, role: payload.role, organizationId: payload.org };
+
+    const roles = this.reflector.getAllAndOverride<UserRole[] | undefined>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (roles && !roles.includes(request.user.role)) {
+      throw new AppException(
+        ErrorCode.FORBIDDEN,
+        "You don't have permission to do this.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return true;
   }
 }
 

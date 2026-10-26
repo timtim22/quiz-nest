@@ -1,4 +1,5 @@
-import { PASSWORD_MIN_LENGTH, registerSchema } from '@quiz-nest/shared';
+import { PASSWORD_MIN_LENGTH, type RegisterResult, registerSchema } from '@quiz-nest/shared';
+import { useState } from 'react';
 import { AuthPageLayout } from '@/components/layout/AuthPageLayout';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +11,28 @@ import { useSchemaForm } from '@/lib/use-schema-form';
 
 export function RegisterPage() {
   const { signIn } = useAuth();
-  const form = useSchemaForm(registerSchema, register, { onSuccess: signIn });
+  const [pendingEmail, setPendingEmail] = useState<string>();
+  const form = useSchemaForm(registerSchema, register, {
+    onSuccess: (result: RegisterResult) => {
+      // When admins must approve new teachers, there's no session yet.
+      if ('pendingApproval' in result) setPendingEmail(result.email);
+      else signIn(result);
+    },
+  });
+
+  if (pendingEmail) {
+    return (
+      <AuthPageLayout title="Thanks for signing up">
+        <Alert variant="success">
+          Your account ({pendingEmail}) is waiting for approval by an administrator. You can log in
+          once it’s approved.
+        </Alert>
+        <p className="mt-4 text-sm">
+          <TextLink to="/login">Back to login</TextLink>
+        </p>
+      </AuthPageLayout>
+    );
+  }
 
   return (
     <AuthPageLayout

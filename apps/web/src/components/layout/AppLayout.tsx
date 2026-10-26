@@ -6,10 +6,10 @@ import { useAuth } from '@/features/auth/auth-context';
 import { Sidebar } from './Sidebar';
 
 /**
- * Shell for every /teacher page: sidebar on desktop, slide-over menu on phones.
+ * Shell for every teacher and admin page: sidebar on desktop, slide-over menu on phones.
  * Uses start/end (not left/right) spacing so it flips correctly for Urdu (RTL).
  */
-export function TeacherLayout() {
+export function AppLayout() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);

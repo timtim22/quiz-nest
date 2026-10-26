@@ -9,6 +9,7 @@ import {
   type LoginInput,
   loginSchema,
   type RegisterInput,
+  type RegisterResult,
   registerSchema,
   type ResetPasswordInput,
   resetPasswordSchema,
@@ -45,10 +46,14 @@ export class AuthController {
   async register(
     @Body(new ZodValidationPipe(registerSchema)) body: RegisterInput,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthSession> {
-    const { session, refreshToken } = await this.auth.register(body);
-    this.setRefreshCookie(res, refreshToken);
-    return session;
+  ): Promise<RegisterResult> {
+    const result = await this.auth.register(body);
+    if ('pendingApproval' in result) {
+      res.status(202);
+      return result;
+    }
+    this.setRefreshCookie(res, result.refreshToken);
+    return result.session;
   }
 
   @Public()

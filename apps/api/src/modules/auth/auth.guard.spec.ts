@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ErrorCode } from '@quiz-nest/shared';
 import { AuthGuard } from './auth.guard.js';
 import type { AccessTokenPayload } from './auth.types.js';
+import { IS_PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 
 const SECRET = 'unit-test-secret-that-is-at-least-32-chars';
 
@@ -62,5 +63,28 @@ describe('AuthGuard', () => {
     await expect(
       guard.canActivate(contextFor({ headers: { authorization: `Bearer ${expired}` } })),
     ).rejects.toMatchObject({ code: ErrorCode.UNAUTHORIZED });
+  });
+
+  describe('@Roles()', () => {
+    const onlyAdmins = (key: string) =>
+      key === ROLES_KEY ? ['ADMIN'] : key === IS_PUBLIC_KEY ? false : undefined;
+
+    it('lets the right role through', async () => {
+      reflector.getAllAndOverride.mockImplementation(onlyAdmins);
+      const token = await jwt.signAsync({ ...payload, role: 'ADMIN' });
+
+      await expect(
+        guard.canActivate(contextFor({ headers: { authorization: `Bearer ${token}` } })),
+      ).resolves.toBe(true);
+    });
+
+    it('rejects other roles with 403', async () => {
+      reflector.getAllAndOverride.mockImplementation(onlyAdmins);
+      const token = await jwt.signAsync(payload);
+
+      await expect(
+        guard.canActivate(contextFor({ headers: { authorization: `Bearer ${token}` } })),
+      ).rejects.toMatchObject({ code: ErrorCode.FORBIDDEN });
+    });
   });
 });

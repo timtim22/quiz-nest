@@ -19,13 +19,13 @@ datasource db {
 
 /// A school, college or academy. Teachers, subjects and exams will belong to one.
 model Organization {
-  id        String   @id @default(uuid(7)) @db.Uuid
+  id        String    @id @default(uuid(7)) @db.Uuid
   name      String
-  slug      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  users User[]
+  slug      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  subjects  Subject[]
+  users     User[]
 
   @@map("organizations")
 }
@@ -41,6 +41,8 @@ enum UserRole {
 
 enum UserStatus {
   ACTIVE
+  /// Signed up while "new teachers need approval" was on; can't log in until an admin approves.
+  PENDING
   DISABLED
 
   @@map("user_status")
@@ -63,6 +65,7 @@ model User {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
 
   @@index([organizationId])
   @@map("users")
@@ -97,4 +100,83 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+/// A subject an organization teaches, e.g. "Physics".
+model Subject {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  chapters     Chapter[]
+
+  @@unique([organizationId, name])
+  @@map("subjects")
+}
+
+/// A chapter inside a subject, e.g. "Motion".
+model Chapter {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  subjectId   String   @map("subject_id") @db.Uuid
+  name        String
+  description String?
+  /// Lower numbers are listed first.
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topics  Topic[]
+
+  @@unique([subjectId, name])
+  @@map("chapters")
+}
+
+/// A topic inside a chapter, e.g. "Velocity".
+model Topic {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  chapterId   String   @map("chapter_id") @db.Uuid
+  name        String
+  description String?
+  /// Lower numbers are listed first.
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  chapter Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([chapterId, name])
+  @@map("topics")
+}
+
+/// A record of an important action: who did what, to which thing, and when.
+/// Write to it through AuditService.record(); never update or delete rows.
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  /// Null for system actions, or when the user has since been removed.
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+/// System-wide settings. There is only ever one row, with id 1.
+model SystemSetting {
+  id                     Int      @id @default(1)
+  requireTeacherApproval Boolean  @default(false) @map("require_teacher_approval")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
 }

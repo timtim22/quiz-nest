@@ -1,16 +1,21 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
+  AuditAction,
   type AuthSession,
   type AuthUser,
   ErrorCode,
   type LoginInput,
+  type PendingApproval,
   type RegisterInput,
   UserRole,
+  UserStatus,
 } from '@quiz-nest/shared';
 import { AppException } from '../../common/errors/app.exception.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { AuditService } from '../audit/audit.service.js';
+import { SettingsService } from '../settings/settings.service.js';
 import type { AccessTokenPayload } from './auth.types.js';
 import { hashPassword, verifyPassword } from './crypto.js';
 import { SessionsService } from './sessions.service.js';
@@ -40,10 +45,15 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly sessions: SessionsService,
+    private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
 
-  /** Creates a teacher account and a new organization for their school, then logs them in. */
-  async register(input: RegisterInput): Promise<IssuedSession> {
+  /**
+   * Creates a teacher account and a new organization for their school, then logs them in.
+   * If an admin has turned on approval, the account waits instead and nobody is logged in.
+   */
+  async register(input: RegisterInput): Promise<IssuedSession | PendingApproval> {
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email },
       select: { id: true },
@@ -51,6 +61,7 @@ export class AuthService {
     if (existing) throw emailTaken();
 
     const passwordHash = await hashPassword(input.password);
+    const { requireTeacherApproval } = await this.settings.get();
 
     try {
       const user = await this.prisma.user.create({
@@ -60,13 +71,23 @@ export class AuthService {
           passwordHash,
           // Never taken from the request: everyone who signs up is a teacher.
           role: UserRole.TEACHER,
+          status: requireTeacherApproval ? UserStatus.PENDING : UserStatus.ACTIVE,
           organization: {
             create: { name: input.schoolName, slug: organizationSlug(input.schoolName) },
           },
         },
         select: AUTH_USER_SELECT,
       });
-      return this.issueSession(user);
+      await this.audit.record({
+        actorId: user.id,
+        action: AuditAction.USER_REGISTERED,
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { pendingApproval: requireTeacherApproval },
+      });
+
+      if (requireTeacherApproval) return { pendingApproval: true, email: user.email };
+      return await this.issueSession(user);
     } catch (error) {
       // Two sign-ups with the same email at the same moment.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -91,8 +112,14 @@ export class AuthService {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    if (user.status === 'DISABLED') throw accountDisabled();
+    assertActive(user);
 
+    await this.audit.record({
+      actorId: user.id,
+      action: AuditAction.USER_LOGGED_IN,
+      entityType: 'User',
+      entityId: user.id,
+    });
     return this.issueSession(user);
   }
 
@@ -103,9 +130,10 @@ export class AuthService {
       where: { id: rotated.userId },
       select: AUTH_USER_SELECT,
     });
-    if (!user || user.status === 'DISABLED') {
+    if (!user || user.status !== UserStatus.ACTIVE) {
       await this.sessions.endAll(rotated.userId);
-      throw accountDisabled();
+      if (!user) throw accountDisabled();
+      assertActive(user);
     }
 
     return { session: await this.buildSession(user), refreshToken: rotated.token };
@@ -120,7 +148,8 @@ export class AuthService {
       where: { id: userId },
       select: AUTH_USER_SELECT,
     });
-    if (!user || user.status === 'DISABLED') throw accountDisabled();
+    if (!user) throw accountDisabled();
+    assertActive(user);
     return toAuthUser(user);
   }
 
@@ -167,6 +196,18 @@ function emailTaken() {
     'An account with this email already exists. Try logging in instead.',
     HttpStatus.CONFLICT,
   );
+}
+
+/** Only ACTIVE accounts may log in or stay logged in. */
+function assertActive(user: { status: UserStatus }) {
+  if (user.status === UserStatus.PENDING) {
+    throw new AppException(
+      ErrorCode.ACCOUNT_PENDING,
+      'Your account is waiting for approval by an administrator.',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+  if (user.status !== UserStatus.ACTIVE) throw accountDisabled();
 }
 
 function accountDisabled() {
