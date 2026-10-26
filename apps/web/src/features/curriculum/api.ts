@@ -1,32 +1,33 @@
 import type {
+  ChapterDto,
+  CreateChapterInput,
   CreateSubjectInput,
   CreateTopicInput,
   SubjectDetailDto,
   SubjectSummaryDto,
+  TopicDto,
   UpdateChapterInput,
+  UpdateSubjectInput,
+  UpdateTopicInput,
 } from '@quiz-nest/shared';
-// Use your shared API client from QN-1. Assumed shape: api.get<T>(path), api.post<T>(path, body),
-// api.patch<T>(path, body), api.delete(path). Adjust the import/method names if yours differ.
-import { api } from '../../lib/api';
+import { apiClient } from '@/lib/api-client';
 
-type CreateChapterInput = object;
-type UpdateTopicInput = object;
-type UpdateSubjectInput = object;
+export const listSubjects = () => apiClient.get<SubjectSummaryDto[]>('/subjects');
+export const getSubject = (id: string) => apiClient.get<SubjectDetailDto>(`/subjects/${id}`);
+export const createSubject = (input: CreateSubjectInput) =>
+  apiClient.post<SubjectSummaryDto>('/subjects', input);
+export const updateSubject = (id: string, input: UpdateSubjectInput) =>
+  apiClient.patch<SubjectSummaryDto>(`/subjects/${id}`, input);
+export const deleteSubject = (id: string) => apiClient.delete<null>(`/subjects/${id}`);
 
-export const curriculumApi = {
-  listSubjects: () => api.get<SubjectSummaryDto[]>('/subjects'),
-  getSubject: (id: string) => api.get<SubjectDetailDto>(`/subjects/${id}`),
-  createSubject: (input: CreateSubjectInput) => api.post<{ id: string }>('/subjects', input),
-  updateSubject: (id: string, input: UpdateSubjectInput) => api.patch(`/subjects/${id}`, input),
-  deleteSubject: (id: string) => api.delete(`/subjects/${id}`),
+export const createChapter = (subjectId: string, input: CreateChapterInput) =>
+  apiClient.post<ChapterDto>(`/subjects/${subjectId}/chapters`, input);
+export const updateChapter = (id: string, input: UpdateChapterInput) =>
+  apiClient.patch<ChapterDto>(`/chapters/${id}`, input);
+export const deleteChapter = (id: string) => apiClient.delete<null>(`/chapters/${id}`);
 
-  createChapter: (subjectId: string, input: CreateChapterInput) =>
-    api.post(`/subjects/${subjectId}/chapters`, input),
-  updateChapter: (id: string, input: UpdateChapterInput) => api.patch(`/chapters/${id}`, input),
-  deleteChapter: (id: string) => api.delete(`/chapters/${id}`),
-
-  createTopic: (chapterId: string, input: CreateTopicInput) =>
-    api.post(`/chapters/${chapterId}/topics`, input),
-  updateTopic: (id: string, input: UpdateTopicInput) => api.patch(`/topics/${id}`, input),
-  deleteTopic: (id: string) => api.delete(`/topics/${id}`),
-};
+export const createTopic = (chapterId: string, input: CreateTopicInput) =>
+  apiClient.post<TopicDto>(`/chapters/${chapterId}/topics`, input);
+export const updateTopic = (id: string, input: UpdateTopicInput) =>
+  apiClient.patch<TopicDto>(`/topics/${id}`, input);
+export const deleteTopic = (id: string) => apiClient.delete<null>(`/topics/${id}`);

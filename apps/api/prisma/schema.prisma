@@ -19,13 +19,13 @@ datasource db {
 
 /// A school, college or academy. Teachers, subjects and exams will belong to one.
 model Organization {
-  id        String   @id @default(uuid(7)) @db.Uuid
+  id        String    @id @default(uuid(7)) @db.Uuid
   name      String
-  slug      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  subjects Subject[]
-  users User[]
+  slug      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  subjects  Subject[]
+  users     User[]
 
   @@map("organizations")
 }
@@ -98,6 +98,7 @@ model PasswordResetToken {
   @@index([userId])
   @@map("password_reset_tokens")
 }
+
 /// A subject an organization teaches, e.g. "Physics".
 model Subject {
   id             String   @id @default(uuid(7)) @db.Uuid

@@ -6,9 +6,10 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor.js';
 import { validateEnv } from './config/env.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { CurriculumModule } from './modules/curriculum/curriculum.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
-import { CurriculumModule } from './curriculum/curriculum.module.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),

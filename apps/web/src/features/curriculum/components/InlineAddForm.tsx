@@ -1,47 +1,59 @@
 import { Plus } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { type FormEvent, useState } from 'react';
+import { Button } from '@/components/ui/Button';
+import { inputClasses } from '@/components/ui/input-styles';
 
-interface Props {
+interface InlineAddFormProps {
+  /** Read by screen readers, e.g. "New chapter name". */
+  label: string;
   placeholder: string;
+  buttonText?: string;
   pending?: boolean;
-  error?: string | null;
-  onSubmit: (value: string) => Promise<unknown> | void;
+  error?: string;
+  onSubmit: (name: string) => Promise<unknown>;
 }
 
-export function InlineAddForm({ placeholder, pending, error, onSubmit }: Props) {
+/** A one-line "type a name, press Add" form. Clears itself after a successful add. */
+export function InlineAddForm({
+  label,
+  placeholder,
+  buttonText = 'Add',
+  pending,
+  error,
+  onSubmit,
+}: InlineAddFormProps) {
   const [value, setValue] = useState('');
 
-  async function handle(e: FormEvent) {
-    e.preventDefault();
-    const v = value.trim();
-    if (!v) return;
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const name = value.trim();
+    if (!name) return;
     try {
-      await onSubmit(v);
+      await onSubmit(name);
       setValue('');
     } catch {
-      /* error is shown via the `error` prop */
+      // The error comes back through the `error` prop; keep the text so it can be fixed.
     }
   }
 
   return (
-    <form onSubmit={handle} className="space-y-1">
+    <form onSubmit={handleSubmit} className="space-y-1.5">
       <div className="flex gap-2">
         <input
+          aria-label={label}
+          aria-invalid={error ? true : undefined}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(event) => setValue(event.target.value)}
           placeholder={placeholder}
           maxLength={120}
-          className="flex-1 rounded-md border border-emerald-800 bg-emerald-950 px-3 py-1.5 text-sm text-emerald-50 placeholder:text-emerald-400/50 focus:border-amber-400 focus:outline-none"
+          className={inputClasses(!!error, 'min-w-0 flex-1')}
         />
-        <button
-          type="submit"
-          disabled={pending || !value.trim()}
-          className="inline-flex items-center gap-1 rounded-md bg-amber-400 px-3 py-1.5 text-sm font-medium text-emerald-950 hover:bg-amber-300 disabled:opacity-50"
-        >
-          <Plus size={14} /> Add
-        </button>
+        <Button type="submit" variant="secondary" disabled={pending || !value.trim()}>
+          <Plus className="size-4" aria-hidden />
+          {buttonText}
+        </Button>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
     </form>
   );
 }

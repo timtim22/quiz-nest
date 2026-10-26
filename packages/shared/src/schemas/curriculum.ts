@@ -1,17 +1,17 @@
 import { z } from 'zod';
 
-const name = z.string().trim().min(1, 'Required').max(120, 'Max 120 characters');
+// Subjects contain chapters, chapters contain topics. Questions (QN-5) are tagged with all three.
 
-export const createSubjectSchema = z.object({
-  name,
-  description: z.string().trim().max(500).optional().nullable(),
-});
+const name = z.string().trim().min(1, 'Enter a name.').max(120, 'Use 120 characters or fewer.');
+const description = z.string().trim().max(500, 'Use 500 characters or fewer.');
+
+export const createSubjectSchema = z.object({ name, description: description.optional() });
 export const updateSubjectSchema = createSubjectSchema.partial();
 
-export const createChapterSchema = z.object({ title: name });
+export const createChapterSchema = z.object({ name });
 export const updateChapterSchema = createChapterSchema.partial();
 
-export const createTopicSchema = z.object({ title: name });
+export const createTopicSchema = z.object({ name });
 export const updateTopicSchema = createTopicSchema.partial();
 
 export type CreateSubjectInput = z.infer<typeof createSubjectSchema>;
@@ -24,16 +24,19 @@ export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;
 export interface TopicDto {
   id: string;
   chapterId: string;
-  title: string;
+  name: string;
   position: number;
 }
+
 export interface ChapterDto {
   id: string;
   subjectId: string;
-  title: string;
+  name: string;
   position: number;
   topics: TopicDto[];
 }
+
+/** One row on the subjects list. */
 export interface SubjectSummaryDto {
   id: string;
   name: string;
@@ -41,6 +44,8 @@ export interface SubjectSummaryDto {
   chapterCount: number;
   createdAt: string;
 }
+
+/** A subject with all its chapters and topics, in order. */
 export interface SubjectDetailDto {
   id: string;
   name: string;

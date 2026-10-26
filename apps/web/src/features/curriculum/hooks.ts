@@ -1,41 +1,48 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UpdateChapterInput, UpdateSubjectInput } from '@quiz-nest/shared';
-import { curriculumApi } from './api';
+import * as api from './api';
 
-const ROOT = ['subjects'] as const; // detail keys are ['subjects', id] so one invalidation refreshes everything
+export const curriculumKeys = {
+  all: ['curriculum'] as const,
+  subjects: () => [...curriculumKeys.all, 'subjects'] as const,
+  subject: (id: string) => [...curriculumKeys.subjects(), id] as const,
+};
 
 export const useSubjects = () =>
-  useQuery({ queryKey: ROOT, queryFn: curriculumApi.listSubjects });
+  useQuery({ queryKey: curriculumKeys.subjects(), queryFn: api.listSubjects });
 
 export const useSubject = (id: string) =>
-  useQuery({ queryKey: [...ROOT, id], queryFn: () => curriculumApi.getSubject(id) });
+  useQuery({ queryKey: curriculumKeys.subject(id), queryFn: () => api.getSubject(id) });
 
-function useCurriculumMutation<TVars>(fn: (vars: TVars) => Promise<unknown>) {
-  const qc = useQueryClient();
+/** Every change refreshes the subject list and the open subject, so counts stay right. */
+function useCurriculumMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
+) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: fn,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ROOT }),
+    mutationFn,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: curriculumKeys.all }),
   });
 }
 
-export const useCreateSubject = () => useCurriculumMutation(curriculumApi.createSubject);
+export const useCreateSubject = () => useCurriculumMutation(api.createSubject);
 export const useUpdateSubject = () =>
-  useCurriculumMutation((v: { id: string; input: UpdateSubjectInput }) =>
-    curriculumApi.updateSubject(v.id, v.input));
-export const useDeleteSubject = () => useCurriculumMutation(curriculumApi.deleteSubject);
+  useCurriculumMutation((v: { id: string; name: string }) =>
+    api.updateSubject(v.id, { name: v.name }),
+  );
+export const useDeleteSubject = () => useCurriculumMutation(api.deleteSubject);
 
-export const useCreateChapter = () =>
-  useCurriculumMutation((v: { subjectId: string; title: string }) =>
-    curriculumApi.createChapter(v.subjectId, { title: v.title }));
+export const useCreateChapter = (subjectId: string) =>
+  useCurriculumMutation((name: string) => api.createChapter(subjectId, { name }));
 export const useUpdateChapter = () =>
-  useCurriculumMutation((v: { id: string; input: UpdateChapterInput }) =>
-    curriculumApi.updateChapter(v.id, v.input));
-export const useDeleteChapter = () => useCurriculumMutation(curriculumApi.deleteChapter);
+  useCurriculumMutation((v: { id: string; name: string }) =>
+    api.updateChapter(v.id, { name: v.name }),
+  );
+export const useDeleteChapter = () => useCurriculumMutation(api.deleteChapter);
 
-export const useCreateTopic = () =>
-  useCurriculumMutation((v: { chapterId: string; title: string }) =>
-    curriculumApi.createTopic(v.chapterId, { title: v.title }));
+export const useCreateTopic = (chapterId: string) =>
+  useCurriculumMutation((name: string) => api.createTopic(chapterId, { name }));
 export const useUpdateTopic = () =>
-  useCurriculumMutation((v: { id: string; input: Parameters<typeof curriculumApi.updateTopic>[1] }) =>
-    curriculumApi.updateTopic(v.id, v.input));
-export const useDeleteTopic = () => useCurriculumMutation(curriculumApi.deleteTopic);
+  useCurriculumMutation((v: { id: string; name: string }) =>
+    api.updateTopic(v.id, { name: v.name }),
+  );
+export const useDeleteTopic = () => useCurriculumMutation(api.deleteTopic);

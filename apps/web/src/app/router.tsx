@@ -11,7 +11,10 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { JoinExamPage } from '@/pages/student/JoinExamPage';
 import { DashboardPage } from '@/pages/teacher/DashboardPage';
-import { SubjectsListPage, SubjectDetailPage } from '@/features/curriculum';
+import { SubjectDetailPage } from '@/pages/teacher/SubjectDetailPage';
+import { SubjectsPage } from '@/pages/teacher/SubjectsPage';
+
+/** Every page in the app. Paths follow the route list in the project spec. */
 export const routes: RouteObject[] = [
   {
     errorElement: <RouteErrorPage />,
@@ -53,7 +56,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: 'dashboard', element: <DashboardPage /> },
-          { path: 'subjects', element: <SubjectsListPage /> },
+          { path: 'subjects', element: <SubjectsPage /> },
           { path: 'subjects/:subjectId', element: <SubjectDetailPage /> },
         ],
       },

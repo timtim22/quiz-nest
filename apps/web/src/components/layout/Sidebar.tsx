@@ -3,6 +3,7 @@ import {
   BookOpen,
   ClipboardList,
   LayoutDashboard,
+  Library,
   type LucideIcon,
   Users,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/teacher/dashboard', icon: LayoutDashboard },
+  { label: 'Subjects', to: '/teacher/subjects', icon: Library },
   { label: 'Question bank', to: '/teacher/questions', icon: BookOpen, comingSoon: true },
   { label: 'Exams', to: '/teacher/exams', icon: ClipboardList, comingSoon: true },
   { label: 'Students', to: '/teacher/students', icon: Users, comingSoon: true },
