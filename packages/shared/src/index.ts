@@ -8,3 +8,4 @@ export * from './schemas/admin.js';
 export * from './schemas/auth.js';
 export * from './schemas/pagination.js';
 export * from './schemas/curriculum.js';
+export * from './students.js'

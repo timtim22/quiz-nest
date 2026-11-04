@@ -25,6 +25,7 @@ model Organization {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   subjects  Subject[]
+  students  Student[]
   users     User[]
 
   @@map("organizations")
@@ -172,6 +173,7 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+
 /// System-wide settings. There is only ever one row, with id 1.
 model SystemSetting {
   id                     Int      @id @default(1)
@@ -179,4 +181,25 @@ model SystemSetting {
   updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+/// A student on an organization's roster. Students never log in; they join
+/// exams with an exam code and roll number.
+model Student {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// Text, because roll numbers can look like "2024-017" or "A12".
+  rollNumber     String   @map("roll_number")
+  name           String
+  /// "class" is a reserved word in code, so the field is className.
+  className      String   @map("class_name")
+  /// Always uppercase. Empty string when the class has no sections.
+  section        String   @default("")
+  parentEmail    String?  @map("parent_email")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, className, section, rollNumber])
+  @@map("students")
 }

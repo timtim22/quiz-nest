@@ -12,7 +12,7 @@ import { CurriculumModule } from './modules/curriculum/curriculum.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
-
+import { StudentsModule } from './modules/students/students.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),
@@ -30,6 +30,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     HealthModule,
     CurriculumModule,
     AdminModule,
+    StudentsModule,
   ],
   providers: [
     // Every error becomes { success: false, error: { code, message } }.
